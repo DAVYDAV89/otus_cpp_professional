@@ -67,4 +67,6 @@ include(CPack)
 enable_testing()
 
 target_link_libraries(test_version gtest)
+add_test(test_version test_version)
+
 
