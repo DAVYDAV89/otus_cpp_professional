@@ -28,8 +28,8 @@ jobs:
     - run: cmake --build .
     - run: cmake --build . --target test
     - run: cmake --build . --target package
-    - run: cat ${{ secrets.GITHUB_TOKEN }}
-
+    - run: ls -l
+    
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
