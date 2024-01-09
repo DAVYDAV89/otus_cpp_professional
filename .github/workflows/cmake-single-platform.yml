@@ -41,6 +41,7 @@ jobs:
       run: ctest -C ${{env.BUILD_TYPE}}
 
     - name: Create Release
+      id: create_release
       working-directory: ${{github.workspace}}/build
       run: cmake --build ${{github.workspace}}/build --target package
 
