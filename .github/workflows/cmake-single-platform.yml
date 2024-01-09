@@ -27,7 +27,7 @@ jobs:
     - run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
     - run: cmake --build ${{github.workspace}}/build
     - run: cmake --build ${{github.workspace}}/build --target test
-    - run: cmake --build ${{github.workspace}}/build --target packag    
+    - run: cmake --build ${{github.workspace}}/build --target package    
     
     - name: Create Release
       id: create_release
