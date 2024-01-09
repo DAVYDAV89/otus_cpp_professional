@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-      - run: cmake . -DPATCH_VERSION=${{ github.run_number }}
+      - run: cmake -B ${{github.workspace}}/build -DPATCH_VERSION=${{ github.run_number }}
       - run: cmake --build  ${{github.workspace}}/build --target package
       - name: Create Release
         id: create_release
