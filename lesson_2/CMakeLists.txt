@@ -1,8 +1,47 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(filtr_ips LANGUAGES CXX)
+set(PATCH_VERSION "1" CACHE INTERNAL "Patch version")
+set(PROJECT_VERSION 0.${PATCH_VERSION})
 
-set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+project(ip_filter LANGUAGES CXX VERSION ${PROJECT_VERSION})
 
-add_executable(filtr_ips main.cpp)
+configure_file(version.h.in version.h)
+
+add_executable(ip_filter main.cpp)
+#add_library(ip_filter_lib lib.cpp)
+#add_executable(test_version_ip_filter main_test.cpp)
+
+
+set_target_properties(ip_filter #[[ip_filter_lib]] #[[test_version_ip_filter]] PROPERTIES
+    CXX_STANDARD 14
+    CXX_STANDARD_REQUIRED ON
+)
+
+target_include_directories(ip_filter
+    PRIVATE "${CMAKE_BINARY_DIR}"
+)
+
+#target_link_libraries(ip_filter_lib PRIVATE
+#    ip_filter_lib
+#)
+#target_link_libraries(test_version_ip_filter
+#    ip_filter
+#)
+
+
+install(TARGETS ip_filter RUNTIME DESTINATION bin)
+
+set(CPACK_GENERATOR DEB)
+
+set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
+set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
+set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
+
+set(CPACK_PACKAGE_CONTACT example@example.com)
+
+include(CPack)
+
+#enable_testing()
+
+#target_link_libraries(test_version_ip_filter gtest)
+#add_test(test_version_ip_filter test_version_ip_filter)
