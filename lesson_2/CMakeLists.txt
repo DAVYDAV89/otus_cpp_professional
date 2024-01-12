@@ -7,12 +7,11 @@ project(ip_filter LANGUAGES CXX VERSION ${PROJECT_VERSION})
 
 configure_file(version.h.in version.h)
 
-add_executable(ip_filter main.cpp)
-#add_library(ip_filter_lib lib.cpp)
-#add_executable(test_version_ip_filter main_test.cpp)
+add_executable(ip_filter main.cpp ipAddres.h)
+add_executable(test_version_ip_filter main_test.cpp ipAddres.h)
 
 
-set_target_properties(ip_filter #[[ip_filter_lib]] #[[test_version_ip_filter]] PROPERTIES
+set_target_properties(ip_filter test_version_ip_filter PROPERTIES
     CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
 )
@@ -21,11 +20,8 @@ target_include_directories(ip_filter
     PRIVATE "${CMAKE_BINARY_DIR}"
 )
 
-#target_link_libraries(ip_filter_lib PRIVATE
+#target_link_libraries(ip_filter
 #    ip_filter_lib
-#)
-#target_link_libraries(test_version_ip_filter
-#    ip_filter
 #)
 
 
@@ -41,7 +37,7 @@ set(CPACK_PACKAGE_CONTACT example@example.com)
 
 include(CPack)
 
-#enable_testing()
+enable_testing()
 
-#target_link_libraries(test_version_ip_filter gtest)
-#add_test(test_version_ip_filter test_version_ip_filter)
+target_link_libraries(test_version_ip_filter gtest)
+add_test(test_version_ip_filter test_version_ip_filter)
