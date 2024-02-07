@@ -1,76 +1,72 @@
 #include <iostream>
-#include <map>
-#include <algorithm>
-#include "myAllocator.h"
-#include "myMap.h"
+#include <type_traits>
+#include <string>
+#include <vector>
+#include <list>
+#include <tuple>
 
-// Функция для вычисления факториала
-int factorial(int n) {
-    int result = 1;
-    for (int i = 1; i <= n; ++i) {
-        result *= i;
+// Вспомогательная структура для определения, является ли тип контейнером
+template<typename T>
+struct is_container : std::false_type {};
+
+template<typename... Args>
+struct is_container<std::vector<Args...>> : std::true_type {};
+
+template<typename... Args>
+struct is_container<std::list<Args...>> : std::true_type {};
+
+template <typename Tuple, size_t... Is>
+void print_tuple(const Tuple& tuple, std::index_sequence<Is...>) {
+    ((std::cout << (Is == 0 ? "" : ".") << std::get<Is>(tuple)), ...);
+}
+
+// Функция для печати элемента
+template<typename T>
+typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, void>::type
+print_ip(const T& ip) {
+    const unsigned char* bytes = reinterpret_cast<const unsigned char*>(&ip);
+    std::cout << static_cast<int>(bytes[0]);
+    for (int i = 1; i < sizeof(T); ++i) {
+        std::cout << "." << static_cast<int>(bytes[i]);
     }
-    return result;
+    std::cout << std::endl;
+}
+
+template<typename T>
+typename std::enable_if<std::is_same<T, std::string>::value, void>::type
+print_ip(const T& ip) {
+    std::cout << ip << std::endl;
+}
+
+template<typename T>
+typename std::enable_if<is_container<T>::value, void>::type
+print_ip(const T& ip) {
+    auto it = ip.begin();
+    std::cout << *it;
+    ++it;
+    while (it != ip.end()) {
+        std::cout << "." << *it;
+        ++it;
+    }
+    std::cout << std::endl;
+}
+
+
+template <typename... Args>
+void print_ip(const std::tuple<Args...>& ip) {
+    print_tuple(ip, std::index_sequence_for<Args...>{});
+    std::cout << std::endl;
 }
 
 int main() {
-    // Создание экземпляра std::map<int, int>
-    std::map<int, int> map1;
-
-    // Заполнение 10 элементами, где ключ - это число от 0 до 9, а значение - факториал ключа
-    for (int i = 0; i < 10; ++i) {
-        map1[i] = factorial(i);
-    }
-
-    // Создание экземпляра std::map<int, int> с новым аллокатором, ограниченным 10 элементами
-    std::map<int, int, std::less<int>, myAllocator<std::pair<const int, int>, 10>> map2;
-
-    // Заполнение 10 элементами, где ключ - это число от 0 до 9, а значение - факториал ключа
-    for (int i = 0; i < 10; ++i) {
-        map2[i] = factorial(i);
-    }
-
-    // Вывод на экран всех значений (ключ и значение разделены пробелом) хранящихся в контейнере
-    std::cout << "map1: ";
-    for (const auto& pair : map1) {
-        std::cout << pair.first << " " << pair.second << " ";
-    }
-    std::cout << std::endl;
-
-    std::cout << "map2: ";
-    for (const auto& pair : map2) {
-        std::cout << pair.first << " " << pair.second << " ";
-    }
-    std::cout << std::endl;
-
-    // Создание экземпляра своего контейнера для хранения значений типа int
-    myMap<int, int> myMap1;
-
-    // Заполнение 10 элементами от 0 до 9
-    for (int i = 0; i < 10; ++i) {
-        myMap1.emplace(i, i);
-    }
-
-    // Создание экземпляра своего контейнера для хранения значений типа int с новым аллокатором, ограниченным 10 элементами
-    myMap<int, int, std::less<int>, myAllocator<std::pair<const int, int>, 10>> myMap2;
-
-    // Заполнение 10 элементами от 0 до 9
-    for (int i = 0; i < 10; ++i) {
-        myMap2.emplace(i, i);
-    }
-
-    // Вывод на экран всех значений, хранящихся в контейнере
-    std::cout << "myMap1: ";
-    for (const auto& pair : myMap1) {
-        std::cout << pair.first << " " << pair.second << " ";
-    }
-    std::cout << std::endl;
-
-    std::cout << "myMap2: ";
-    for (const auto& pair : myMap2) {
-        std::cout << pair.first << " " << pair.second << " ";
-    }
-    std::cout << std::endl;
+    print_ip(int8_t{-1}); // 255
+    print_ip(int16_t{0}); // 0.0
+    print_ip(int32_t{2130706433}); // 127.0.0.1
+    print_ip(int64_t{8875824491850138409}); // 123.45.67.89.101.112.131.41
+    print_ip(std::string{"Hello, World!"}); // Hello, World!
+    print_ip(std::vector<int>{100, 200, 300, 400}); // 100.200.300.400
+    print_ip(std::list<short>{400, 300, 200, 100}); // 400.300.200.100
+    print_ip(std::make_tuple(123, 456, 789, 0)); // 123.456.789.0
 
     return 0;
 }
