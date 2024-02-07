@@ -1,61 +1,76 @@
-#include <cassert>
-#include <cstdlib>
 #include <iostream>
-#include <string>
+#include <map>
 #include <algorithm>
+#include "myAllocator.h"
+#include "myMap.h"
 
-#include "ipAddres.h"
+// Функция для вычисления факториала
+int factorial(int n) {
+    int result = 1;
+    for (int i = 1; i <= n; ++i) {
+        result *= i;
+    }
+    return result;
+}
 
-int main(int argc, char const *argv[])
-{
-    std::vector<IpAddress> ipAddresses;
-    std::string line;
+int main() {
+    // Создание экземпляра std::map<int, int>
+    std::map<int, int> map1;
 
-    // Чтение данных из стандартного ввода
-    while (std::getline(std::cin, line))
-    {
-        IpAddress ipAddress;
-        ipAddress.parseFromString(line);
-        ipAddresses.push_back(ipAddress);
+    // Заполнение 10 элементами, где ключ - это число от 0 до 9, а значение - факториал ключа
+    for (int i = 0; i < 10; ++i) {
+        map1[i] = factorial(i);
     }
 
-    // Сортировка в обратном лексикографическом порядке
-    std::sort(ipAddresses.rbegin(), ipAddresses.rend());
+    // Создание экземпляра std::map<int, int> с новым аллокатором, ограниченным 10 элементами
+    std::map<int, int, std::less<int>, myAllocator<std::pair<const int, int>, 10>> map2;
 
-    // Вывод полного списка адресов после сортировки
-    for (const auto& ipAddress : ipAddresses)
-    {
-        std::cout << ipAddress << std::endl;
+    // Заполнение 10 элементами, где ключ - это число от 0 до 9, а значение - факториал ключа
+    for (int i = 0; i < 10; ++i) {
+        map2[i] = factorial(i);
     }
-    std::cout << std::endl;
 
-    // Вывод адресов, первый байт которых равен 1
-    for (const auto& ipAddress : ipAddresses)
-    {
-        if (ipAddress.bytes[0] == 1)
-            std::cout << ipAddress << std::endl;
-    }
-    std::cout << std::endl;
-
-    // Вывод адресов, первый байт которых равен 46, а второй 70
-    for (const auto& ipAddress : ipAddresses)
-    {
-        if (ipAddress.bytes[0] == 46 && ipAddress.bytes[1] == 70)
-            std::cout << ipAddress << std::endl;
+    // Вывод на экран всех значений (ключ и значение разделены пробелом) хранящихся в контейнере
+    std::cout << "map1: ";
+    for (const auto& pair : map1) {
+        std::cout << pair.first << " " << pair.second << " ";
     }
     std::cout << std::endl;
 
-    // Вывод адресов, любой байт которых равен 46
-    for (const auto& ipAddress : ipAddresses)
-    {
-        if (std::find(ipAddress.bytes.begin(), ipAddress.bytes.end(), 46) != ipAddress.bytes.end())
-            std::cout << ipAddress << std::endl;
+    std::cout << "map2: ";
+    for (const auto& pair : map2) {
+        std::cout << pair.first << " " << pair.second << " ";
     }
+    std::cout << std::endl;
+
+    // Создание экземпляра своего контейнера для хранения значений типа int
+    myMap<int, int> myMap1;
+
+    // Заполнение 10 элементами от 0 до 9
+    for (int i = 0; i < 10; ++i) {
+        myMap1.emplace(i, i);
+    }
+
+    // Создание экземпляра своего контейнера для хранения значений типа int с новым аллокатором, ограниченным 10 элементами
+    myMap<int, int, std::less<int>, myAllocator<std::pair<const int, int>, 10>> myMap2;
+
+    // Заполнение 10 элементами от 0 до 9
+    for (int i = 0; i < 10; ++i) {
+        myMap2.emplace(i, i);
+    }
+
+    // Вывод на экран всех значений, хранящихся в контейнере
+    std::cout << "myMap1: ";
+    for (const auto& pair : myMap1) {
+        std::cout << pair.first << " " << pair.second << " ";
+    }
+    std::cout << std::endl;
+
+    std::cout << "myMap2: ";
+    for (const auto& pair : myMap2) {
+        std::cout << pair.first << " " << pair.second << " ";
+    }
+    std::cout << std::endl;
 
     return 0;
 }
-
-
-
-
-
