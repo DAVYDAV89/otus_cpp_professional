@@ -39,8 +39,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./ips-0.${{ github.run_number }}-Linux.deb
-          asset_name: ips-0.${{ github.run_number }}-Linux.deb
+          asset_path: ./print_ips-1.0.2024-Linux Mint.deb
+          asset_name: print_ips-1.0.2024-Linux Mint.deb
           asset_content_type: application/vnd.debian.binary-package
       
 
