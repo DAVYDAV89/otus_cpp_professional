@@ -38,8 +38,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./Document-1.0.2024-Linux Mint.deb
-          asset_name: Document-1.0.2024-Linux Mint.deb
+          asset_path: ./Matrix-1.0.2024-Linux Mint.deb
+          asset_name: Matrix-1.0.2024-Linux Mint.deb
           asset_content_type: application/vnd.debian.binary-package
       
 
