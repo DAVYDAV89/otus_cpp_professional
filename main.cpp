@@ -1,53 +1,65 @@
 #include <iostream>
-#include "matrix.h"
+#include <cstdlib>
+#include <iostream>
+#include <fstream>
+#include "interface.h"
 
-int main()
+int get_n(int argc, char* argv[])
 {
-  // При запуске программы необходимо создать матрицу с пустым значением 0,...
-  matrix_t<int, 0> matrix;
-  // ..., заполнить главную диагональ матрицы(от[0, 0] до[9, 9]) значениями от 0 до 9.
-  for (int i = 0; i <= 9; ++i)
-  {
-    matrix[i][i] = i;
-  }
-  // Второстепенную диагональ (от [0,9] до [9,0]) значениями от 9 до 0.
-  for (int i = 0; i <= 9; ++i)
-  {
-    matrix[i][9-i] = 9-i;
-  }
-  // Необходимо вывести фрагмент матрицы от[1, 1] до[8, 8]. Между столбцами пробел.
-  // Каждая строка матрицы на новой строке консоли.
-  for (int i = 1; i <= 8; ++i)
-  {
-    for (int j = 1; j <= 8; ++j)
+    if (argc != 2) return 0;
+    try
     {
-      if (j > 1) std::cout << ' ';
-      std::cout << matrix[i][j];
+      int n = std::stoul(argv[1]);
+      return n;
     }
-    std::cout << std::endl;
-  }
-  // Вывести количество занятых ячеек.
-  std::cout << matrix.size() << std::endl;
-  // Вывести все занятые ячейки вместе со своими позициями.
-  for (auto c : matrix)
+    catch (...)
+    {
+      return 0;
+    }
+}
+
+std::string trim(const std::string& s, const char * _whitespaces = " \n\r\t\f\v")
+{
+    const std::string whitespaces(_whitespaces);
+    const std::size_t from = s.find_first_not_of(whitespaces);
+    if (from == std::string::npos) return "";
+    std::string res = s.substr(from);
+    const std::size_t to = res.find_last_not_of(whitespaces);
+    if (to == std::string::npos) return "";
+    return res.substr(0, to + 1);
+}
+
+int main(int argc, char* argv[])
+{
+  int n = get_n(argc, argv);
+  if (n <= 0)
   {
-    unsigned x;
-    unsigned y;
-    int v;
-    std::tie(x, y, v) = c;
-    std::cout << "matrix[" << x << "][" << y << "] = " << v << std::endl;
+    std::cerr
+      << "Usage: bulk <N>" << std::endl
+      << "       where N - the number of commands processed at a bulk" << std::endl;
+    return EXIT_FAILURE;
   }
-  // Опционально реализовать N-мерную матрицу
-  // (попробовал реализовать методом циклического метапрограммирования... не справился с передачей адреса)
-  // Опционально реализовать каноническую форму оператора '=', допускающую выражения
-  // ((matrix[100][100] = 314) = 0) = 217
+  auto bulk_finalizer = [](const std::time_t& t, const std::string& line) {
+    std::cout << line << std::endl;
+    std::string filename = "bulk" + std::to_string(t) + ".log";
+    std::ofstream f(filename);
+    f << line << std::endl;
+    f.close();
+  };
+
+  interface::custom_bulk_t bulk(n, bulk_finalizer);
+  std::string cmd;
+  while (std::getline(std::cin, cmd))
   {
-    matrix_t<int, 0> matrix;
-    std::cout << "matrix[100][100] = " << matrix[100][100] << ", size = " << matrix.size() << std::endl;
-    std::cout << "matrix[100][100] = " << (matrix[100][100] = 314) << ", size = " << matrix.size() << std::endl;
-    std::cout << "matrix[100][100] = " << ((matrix[100][100] = 314) = 0) << ", size = " << matrix.size() << std::endl;
-    std::cout << "matrix[100][100] = " << (((matrix[100][100] = 314) = 0) = 217) << ", size = " << matrix.size() << std::endl;
+    cmd = trim(cmd);
+    if (cmd.empty())
+      break;
+    else if (cmd == "{")
+      bulk.start_transaction();
+    else if (cmd == "}")
+      bulk.commit_transaction();
+    else
+      bulk.prepare(new interface::custom_command_t(cmd));
   }
-  // также см. тесты в файле src/core/test/test_matrix.cpp
-  return 0;
+  return EXIT_SUCCESS;
 }
