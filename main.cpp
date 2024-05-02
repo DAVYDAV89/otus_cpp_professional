@@ -1,278 +1,192 @@
 // -*- mode: c++; coding: utf-8 -*-
 
 #include <iostream>
-#include <iomanip>
 #include <cstdlib>
-#include <map>
-#include <algorithm>
-#include <unordered_map>
+#include <list>
+#include <utility>
+#include <cstdlib>
 
-#include "initializer.h"
-#include "file_utils.h"
+#include "utils.h"
 
-#include <boost/filesystem.hpp>
-#include <boost/functional/hash.hpp>
+#include <async.h>
+
+#include "logger.h"
+#include "writers_pool.h"
 
 
+volatile static bool g_terminated = false;
 
-namespace fs = boost::filesystem; // начиная с C++17 можно пользоваться std::filesystem
-
-using files_by_sz_t = std::multimap<homework21::file_size_t, std::string>;
-std::size_t decimation_unique_sizes(files_by_sz_t& files_by_sz);
-
-void print_identical_files(const files_by_sz_t& files_by_sz, const homework21::startup_params_t& params);
+int get_n(int argc, char* argv[]);
+std::string get_cmd(int& cmd_lvl, int& cmd_num, int n);
+void init_terminate_handler(homework25::abstract_logger_t* logger);
 
 int main(int argc, char* argv[])
 {
-  // инициализация работы программы с помощью командной строки
-  homework21::startup_params_t params;
-  if (!homework21::init_startup_params(argc, argv, params)) return EXIT_FAILURE;
-
-  // подготовка локальных переменных для работы цикла
-  files_by_sz_t files_by_sz;
-
-  for (const auto& path : params.path)
+  // Параметр N передается как единственный параметр командной строки в виде целого числа.
+  int n = get_n(argc, argv);
+  if (n <= 0)
   {
-    // рекурсивный перебор файлов
-    const fs::recursive_directory_iterator end;
-    fs::recursive_directory_iterator itr = fs::recursive_directory_iterator(path);
-    while (itr != end)
-    {
-      const fs::directory_entry& e = *itr;
-      if (e.status().type() == fs::file_type::regular_file)
-      {
-        // проверка ограничения на размер файла, если слишком маленький, то пропускаем
-        homework21::file_size_t sz = fs::file_size(e.path());
-        if (sz < params.min_file_size)
-        {
-          if (params.verbose) std::cout << "skip file " << e.path() << " (by size " << sz << ")" << std::endl;
-          ++itr;
-          continue;
-        }
-        // проверка шаблонов файлов (если указаны)
-        if (!params.filename_masks.empty())
-        {
-          const std::string fname = e.path().filename().string();
-          if (params.filename_masks.end() == find_if(params.filename_masks.begin(), params.filename_masks.end(),
-            [&fname](const std::regex& tmpl) {
-              return std::regex_match(fname, tmpl);
-            }
-          ))
-          {
-            if (params.verbose) std::cout << "skip file " << e.path() << " (filename not matches templates)" << std::endl;
-            ++itr;
-            continue;
-          }
-        }
-        // проверка, можно ли работать с найденным файлом?
-        if ((e.status().permissions() & (fs::perms::owner_read | fs::perms::group_read | fs::perms::others_read)) == 0) continue;
-        // просто вывод отладки (если включена)
-        if (params.verbose) std::cout << "found regular file " << e.path() << " (size " << sz << ")" << std::endl;
-        // считаем хеш-сумму файла
-        files_by_sz.insert(files_by_sz_t::value_type(sz, e.path().string()));
-      }
-      else if (e.status().type() == fs::file_type::directory_file)
-      {
-        // проверка вложенности директорий (поскольку мы итерируемся рекурсивно, без использования рекурсии, то
-        // нельзя настроит итератор заранее, - приходится приходить через одну лишнюю вложенность)
-        if (params.level.is_initialized() && (itr.depth() > (int)params.level.value()))
-        {
-          // просто вывод отладки (если включена)
-          if (params.verbose) std::cout << "skip directory " << e.path() << " (by depth)" << std::endl;
-          // найдено исключение: итерируемся без рекурсии
-          itr.no_push();
-          ++itr;
-          if (itr == end) break;
-          itr.no_push(false);
-          continue;
-        }
-        // проверка директорий, которые надо исключить из поиска
-        if (!params.exclude_path.empty())
-        {
-          if (params.exclude_path.end() != find_if(params.exclude_path.begin(), params.exclude_path.end(),
-                                                   [&e](const std::string& exclude) { return e.path().compare(exclude) == 0; } ))
-          {
-            // просто вывод отладки (если включена)
-            if (params.verbose) std::cout << "skip directory " << e.path() << " (by exclude)" << std::endl;
-            // найдено исключение: итерируемся без рекурсии
-            itr.no_push();
-            ++itr;
-            if (itr == end) break;
-            itr.no_push(false);
-            continue;
-          }
-        }
-        // просто вывод отладки (если включена)
-        if (params.verbose) std::cout << "directory " << e.path() << " (depth " << itr.depth() << ")" << std::endl;
-      }
-      ++itr;
-    }
+    std::cerr
+      << "Usage: async <N>" << std::endl
+      << "       where N - the number of commands processed at a bulk" << std::endl;
+    return EXIT_FAILURE;
   }
 
-  // удаляем из списка файлов (проиндексированных по размеру) те файлы, которые не имеют дубликатов по размеру
-  std::size_t cnt_before = files_by_sz.size();
-  std::size_t cnt_decimated = decimation_unique_sizes(files_by_sz);
+  // создаём поток logger-а и запускаем его
+  // поток будет все возникающие события асинхронно доставлять в вывод std::cout
+  // Внимание! никакой объект не должен быть создан прежде logger-а, также logger разрушается последним
+  homework25::logger_t cout_logger(std::cout);
+  // получаем интерфес логгера, который передадим другим объектам
+  homework25::abstract_logger_t* logger = cout_logger.get_interface();
 
-  // просто вывод отладки (если включена)
-  if (params.verbose) std::cout << "found " << cnt_before << " files (" << cnt_before-cnt_decimated << " of them with non unique sizes)" << std::endl;
+  // инициализируем обработчик сигнала, который выставит флаг прекращения работы программы
+  init_terminate_handler(logger);
 
-  // вывод на экран названия файлов с идентичным содержимым
-  print_identical_files(files_by_sz, params);
+  {
+    // <thread pool> устроен таким образом, что только <leader> поток может пользоваться
+    // набором данных в <handle set> (через интерфейс <reactor>)
+    homework25::my_set_of_commands_t commands(g_terminated);
+    leaders_followers::thread_pool_t thread_pool(&commands);
+
+    // <thread spawner> запускает поток, который делает join к <thread pool> и ждёт поступления
+    // данных в <handle set>
+    homework25::thread_manager_t thread_spawner(&thread_pool, g_terminated);
+    auto writer1 = thread_spawner.spawn();
+    auto writer2 = thread_spawner.spawn();
+    // ...можно ещё добавить потоков, которые будут писать данные в файлы
+
+    // готовим лямбда-функцию, которая будет отправлять готовые команды в список для их
+    // асинхронного выполнения
+    auto cmd_prepare = [logger , &commands, &thread_pool](const std::time_t& t, const std::string& line) {
+      logger->log(line.c_str());
+      commands.push_command(new homework25::my_command_t(&thread_pool, t, line));
+    };
+
+    // создаём контексты, в рамках которых будут готовиться команды
+    // все генераторы получают единый потокобезопасный интерфейс ввода команд в список на обработку
+    // с каждым генератором будет связано число - кол-во вложенных {} скобок
+    #define MAX_GENERATORS  4
+    using generators_t = std::vector<std::pair<homework25::async_ctx_t*, int>>;
+    generators_t generators;
+    generators.reserve(MAX_GENERATORS);
+    for (int i = 0; i < MAX_GENERATORS; ++i)
+    {
+      generators.push_back(generators_t::value_type(homework25::connect(n, cmd_prepare),0));
+    }
+
+    // здесь реализован вечный цикл, в котором крутится проверка нажатия на Ctrl+C, которые
+    // должен нажать пользователь, так что главный поток ничем не занят, кроме проверки
+    // значения флага g_terminated (как того требует ТЗ)
+    // ---
+    // лучшим решением было бы здесь вызвать thread_pool.join(), с тем чтобы главный поток был
+    // занят делом, а не "просто крутился вхолостую", но всё же как сказано в ТЗ, так и поступим...
+    using namespace std::chrono_literals;
+    int cmd_num = 1;
+    while (!g_terminated)
+    {
+      std::this_thread::sleep_for(250ms);
+      // перебираем все генераторы и случайным образом готовим команду каждому их них
+      for (auto& g : generators)
+      {
+        std::string cmd = get_cmd(g.second, cmd_num, n);
+        // передаём команду генератору
+        logger->log(cmd.c_str());
+        homework25::receive(g.first, cmd);
+      }
+    }
+
+    // удалям контекст, который готовил команды
+    for (auto& g : generators)
+    {
+      homework25::disconnect(g.first);
+    }
+
+    // после того, как пользователь нажал кнопки Ctrl+C, - дожидаемся завершения работы всех потоков
+    writer2->join();
+    writer1->join();
+
+    // созданные экземпляры потоков и <thread pool> будет уничтожен scoped-деструкторами
+  }
 
   return EXIT_SUCCESS;
 }
 
-template<class Multimap>
-std::size_t decimate_unique_keys(Multimap& mmap, typename Multimap::iterator begin)
+
+int get_n(int argc, char* argv[])
 {
-  std::size_t decimated = 0;
-  files_by_sz_t::const_iterator end = mmap.end(), itr = begin;
-  while (itr != end)
+  if (argc != 2) return 0;
+  try
   {
-    const auto key = itr->first;
-    std::size_t cnt = mmap.count(key);
-    if (cnt != 1)
-      itr = mmap.upper_bound(key);
-    else
-    {
-      itr = mmap.erase(itr);
-      end = mmap.end();
-      decimated++;
-    }
+    int n = std::stoul(argv[1]);
+    return n;
   }
-  return decimated;
+  catch (...)
+  {
+    return 0;
+  }
 }
 
-std::size_t decimation_unique_sizes(files_by_sz_t& files_by_sz)
+
+std::string get_cmd(int& cmd_lvl, int& cmd_num, int n)
 {
-  files_by_sz_t::iterator zero_size = files_by_sz.find(0);
-  if (zero_size == files_by_sz.end())
-    zero_size = files_by_sz.upper_bound(0);
-  return decimate_unique_keys(files_by_sz, zero_size);
-}
-
-class file_hash_t
-{
-  std::array<uint32_t, 4> x;
-  int y;
-public:
-  file_hash_t() : x{0, 0, 0, 0}, y(1) {}
-  file_hash_t(uint32_t crc32) : x{crc32, 0, 0, 0}, y(1) {}
-  file_hash_t(const std::array<uint32_t, 4>& md5) : x(md5), y(4) {}
-  std::size_t id() const { return hash_value(*this); }
-
-  bool operator==(file_hash_t const& other) const
+  if (cmd_lvl == 0)
+    cmd_lvl = 1;
+  else
   {
-    return (y == 1) ? (x[0] == other.x[0]) : (x == other.x);
-  }
-
-  friend std::size_t hash_value(file_hash_t const& p)
-  {
-    if (p.y == 1) return p.x[0];
-    std::size_t seed = 0;
-    boost::hash_combine(seed, p.x[0]);
-    boost::hash_combine(seed, p.x[1]);
-    boost::hash_combine(seed, p.x[2]);
-    boost::hash_combine(seed, p.x[3]);
-    return seed;
-  }
-
-  std::size_t operator()(file_hash_t const& s) const noexcept
-  {
-    return hash_value(s);
-  }
-};
-
-void print_identical_files(const files_by_sz_t& files_by_sz, const homework21::startup_params_t& params)
-{
-  files_by_sz_t::const_iterator end = files_by_sz.end();
-  files_by_sz_t::const_iterator itr = files_by_sz.find(0);
-  if (itr == files_by_sz.end())
-    itr = files_by_sz.upper_bound(0);
-  while (itr != end)
-  {
-    homework21::file_size_t sz = itr->first;
-    files_by_sz_t::const_iterator next = files_by_sz.upper_bound(sz);
-    if (sz == 0)
+    int x = std::rand() / (RAND_MAX / (n + 1));
+    if (x == 0)
     {
-      // файлы нулевой длины являются одинаковыми ('содержимое' совпадает ;)
-      for (; itr != next; ++itr)
-        std::cout << itr->second << std::endl;
-      std::cout << std::endl;
-    }
-    else
-    {
-      // создаём cnt корзин в unordered_multimap-е
-      // к сожалению аллокатор boost::unordered_multimap даже последней версии deprecated in C++17
-      std::size_t cnt = files_by_sz.count(sz);
-      using hashed_files_t = std::unordered_multimap<file_hash_t, std::string, boost::hash<file_hash_t>>;
-      hashed_files_t hashed_files;
-      hashed_files.reserve(cnt);
-      // перебираем все файлы размера sz, расчёт у них хеш-сумм первых блоков
-      for (; itr != next; ++itr)
+      if (cmd_lvl > 0)
       {
-        file_hash_t hash;
-        switch (params.algorithm)
-        {
-        case homework21::algorithm_t::crc32:
-          hash = homework21::get_hash_crc32(itr->second, sz, params.block_size);
-          break;
-        case homework21::algorithm_t::md5:
-          hash = file_hash_t(homework21::get_hash_md5(itr->second, sz, params.block_size));
-          break;
-        default:
-          assert(0 && "unsupported hash algorithm");
-        }
-        hashed_files.insert(hashed_files_t::value_type(hash, itr->second));
-        // просто вывод отладки (если включена)
-        if (params.verbose) std::cout << "hash " << std::hex << std::setfill('0') << std::setw(8) << hash.id() << " for " << itr->second << std::endl;
+        cmd_lvl++;
+        if (cmd_lvl == 3) cmd_lvl = -2;
+        return "{";
       }
-      // перебор одинаковых хешей и остаточная проверка содержимого файлов
-      hashed_files_t::const_iterator end = hashed_files.end(), itr = hashed_files.begin();
-      while (itr != end)
+      else
       {
-        const auto key = itr->first;
-        // прореживание уникальных хешей
-        std::size_t cnt = hashed_files.count(key);
-        if (cnt == 1)
-        {
-          itr = hashed_files.erase(itr);
-          end = hashed_files.end();
-          continue;
-        }
-        // получаем файлы с одинаковым хешом (первого блока)
-        auto range = hashed_files.equal_range(key);
-        homework21::filenames_t range_files(cnt);
-        auto filename_selector = [](auto pair) { return pair.second; };
-        std::transform(range.first, range.second, range_files.begin(), filename_selector);
-        std::vector<homework21::filenames_t> compare_result;
-        switch (params.algorithm)
-        {
-        case homework21::algorithm_t::crc32:
-          compare_result = homework21::compare_files_crc32(range_files, sz, params.block_size, params.verbose);
-          break;
-        case homework21::algorithm_t::md5:
-          compare_result = homework21::compare_files_md5(range_files, sz, params.block_size, params.verbose);
-          break;
-        default:
-          assert(0 && "unsupported hash algorithm");
-        }
-        // если идентичные файлы найдены, то вывод их наименований в консоль
-        for (const auto& group : compare_result)
-        {
-          for (const auto& fname : group)
-            std::cout << fname << std::endl;
-          std::cout << std::endl;
-        }
-        // удаление из коллекции более ненужных (обработанных) файлов
-        do
-        {
-          itr = hashed_files.erase(itr);
-          end = hashed_files.end();
-          auto tmp = hashed_files.find(key);
-          if (tmp != end) itr = tmp; else break;
-        } while (true);
+        cmd_lvl++;
+        return "}";
       }
     }
   }
+  return "cmd" + std::to_string(cmd_num++);
 }
+
+
+static homework25::abstract_logger_t* g_logger = nullptr;
+#ifdef CPP_OTUS_WINDOWS
+#include <Windows.h>
+BOOL WINAPI console_handler(DWORD signal)
+{
+  if (signal == CTRL_C_EVENT)
+  {
+    g_logger->log("Ctrl+C pressed & handled...");
+    g_terminated = true;
+    return TRUE;
+  }
+  return FALSE;
+}
+#elif defined(CPP_OTUS_POSIX)
+#include <signal.h>
+void console_ctrlc_handler(int /*sig*/)
+{
+  g_logger->log("Ctrl+C pressed & handled...");
+  g_terminated = true;
+}
+#endif
+
+void init_terminate_handler(homework25::abstract_logger_t* logger)
+{
+  g_logger = logger;
+#ifdef CPP_OTUS_WINDOWS
+  SetConsoleCtrlHandler(console_handler, TRUE);
+#elif defined(CPP_OTUS_POSIX)
+  signal(SIGINT, console_ctrlc_handler);
+  signal(SIGQUIT, console_ctrlc_handler);
+  signal(SIGTERM, console_ctrlc_handler);
+  //не перехватывается:signal(SIGKILL, console_ctrlc_handler);
+  //не подключен:signal(SIGABRT, core::stack_trace_handler);
+  //не подключен:signal(SIGSEGV, core::stack_trace_handler);
+#endif
+}
+
