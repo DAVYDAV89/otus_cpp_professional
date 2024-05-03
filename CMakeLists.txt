@@ -1,5 +1,4 @@
-﻿get_filename_component(TARGET_SUBNAME ${CMAKE_CURRENT_LIST_DIR} NAME)
-set(TARGET "${CMAKE_PROJECT_NAME}_${TARGET_SUBNAME}")
+﻿set(TARGET async_bulk)
 
 file( GLOB TARGET_HEADERS *.h)
 file( GLOB TARGET_SRCS *.cpp )
@@ -12,22 +11,27 @@ target_link_libraries(${TARGET} async)
 
 set_target_properties(${TARGET} PROPERTIES
   CXX_STANDARD 17
-  CXX_STANDARD_REQUIRED ON)
+  CXX_STANDARD_REQUIRED ON
+  )
 
-# создаём инсталляционный пакет, в который включаем target-приложение
-# переменованное в async_bulk (это название задано в спецификации на выполнение д.з.)
-# поскольку нельзя переименовать target (cmake это запрещает), то подключаем к
-# инсталл¤ционному пакету собранное приложение по известному пути, и тогда уже переименовываем
 if (WIN32)
   install(
     PROGRAMS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/${TARGET}.exe"
     DESTINATION bin CONFIGURATIONS Release RENAME async_bulk.exe)
 else()
   message(STATUS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${TARGET}")
-  install(TARGETS ${TARGET} RUNTIME DESTINATION bin)
-  # в linux такой фокус не пройдЄт (почему... не пон¤л), поэтому просто создаю символическую ссылку
-  # на несуществующее положение и просто включаю еЄ в дистрибутив
-  execute_process(COMMAND rm --force ${CMAKE_BINARY_DIR}/async_bulk)
-  execute_process(COMMAND ln -s "${CPACK_INSTALL_PREFIX}/${CPP_OTUS_INSTALL_BIN_DIR}/${TARGET}" ${CMAKE_BINARY_DIR}/async_bulk)
-  install(FILES ${CMAKE_BINARY_DIR}/async_bulk DESTINATION bin)
+  install(TARGETS async LIBRARY DESTINATION lib)
+  install(FILES ${CMAKE_BINARY_DIR}/async_bulk
+      PERMISSIONS  OWNER_READ OWNER_EXECUTE WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE
+      DESTINATION bin)
 endif()
+
+
+set(CPACK_GENERATOR "DEB")
+set(CPACK_PACKAGE_NAME "async_bulk")
+set(CPACK_PACKAGE_VERSION "1.0.2024")
+set(CPACK_PACKAGE_CONTACT "Roman Davydov")
+set(CMAKE_SYSTEM_NAME "Linux Mint")
+include(CPack)
+
+
